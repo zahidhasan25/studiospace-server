@@ -146,4 +146,15 @@ function isUsingMongo() {
   return useMongo;
 }
 
-module.exports = { connect, collection, isUsingMongo, newId };
+// Raw MongoDB handles for BetterAuth, which needs a real Db object for its
+// MongoDB adapter. Returns null when the server is on the in-memory
+// fallback (no/unreachable MONGODB_URI); callers must handle that case.
+function getDb() {
+  return db;
+}
+
+function getMongoClient() {
+  return client;
+}
+
+module.exports = { connect, collection, isUsingMongo, newId, getDb, getMongoClient };

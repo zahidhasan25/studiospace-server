@@ -1,6 +1,11 @@
 // Seed data for StudioSpace. Shared by index.js on startup; also runnable
 // standalone with `npm run seed` (it only prints the data in that mode).
-const bcrypt = require("bcryptjs");
+//
+// NOTE (BetterAuth branch): the examiner account is NOT seeded here with
+// a hand-written password hash. BetterAuth hashes email/password accounts
+// in its own format, so index.js creates the examiner account through
+// BetterAuth's signUpEmail API on startup instead (see index.js seed()).
+// A bcrypt hash in a legacy "users" collection would never verify.
 
 const img = (id) =>
   `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1200&q=80`;
@@ -261,20 +266,10 @@ const SEED_STUDIOS = [
   },
 ];
 
-async function seedDemoUser() {
-  return {
-    name: "Examiner",
-    email: "examiner@studiospace.test",
-    password: await bcrypt.hash("Examiner123", 10),
-    photo: "",
-    provider: "email",
-    createdAt: new Date(),
-  };
-}
-
 if (require.main === module) {
   console.log(`Seed file contains ${SEED_STUDIOS.length} studios.`);
   console.log("Run the server (npm start) to seed the database automatically.");
+  console.log("The examiner account (examiner@studiospace.test / Examiner123) is created by the server via BetterAuth on startup.");
 }
 
-module.exports = { SEED_STUDIOS, seedDemoUser };
+module.exports = { SEED_STUDIOS };
