@@ -412,7 +412,25 @@ app.post("/api/bookings", authRequired, async (req, res) => {
 
 app.get("/api/bookings", authRequired, async (req, res) => {
   try {
-    const bookings = await collection("bookings").find({ userEmail: req.user.email });
+    // Return the user's own bookings AND bookings on studios they own,
+    // so a studio host can see and confirm incoming requests (which is
+    // what makes a booking reach Confirmed and its PDF invoice).
+    const all = await collection("bookings").find({});
+    const studios = await collection("studios").find({});
+    const studioById = new Map(studios.map((st) => [String(st._id), st]));
+    const bookings = all
+      .filter((b) => {
+        const studio = studioById.get(String(b.studioId));
+        return b.userEmail === req.user.email || studio?.ownerEmail === req.user.email;
+      })
+      .map((b) => {
+        const studio = studioById.get(String(b.studioId));
+        return {
+          ...b,
+          canCancel: b.userEmail === req.user.email,
+          canConfirm: studio?.ownerEmail === req.user.email,
+        };
+      });
     bookings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     return res.json(bookings);
   } catch (err) {
