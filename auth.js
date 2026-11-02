@@ -65,8 +65,29 @@ function createAuth({ db, clientUrl, serverUrl }) {
     },
     advanced: {
       useSecureCookies: production,
+      // The OAuth state cookie is NOT covered by the session_token override
+      // below: BetterAuth creates it with SameSite=Lax by default. The BA
+      // client signs in via a cross-site POST (Vercel -> Render), so a Lax
+      // state cookie is never persisted by the browser and Google's callback
+      // fails with "State mismatch: State not persisted correctly" (seen live
+      // 2 Nov 2026, even after NODE_ENV=production). Force every auth cookie
+      // — including the state cookie — to SameSite=None + Secure in
+      // production, so the cross-site POST can persist it, exactly like the
+      // session cookie that already works for email login.
+      defaultCookieAttributes: {
+        sameSite: production ? "none" : "lax",
+        secure: production,
+      },
       cookies: {
         session_token: {
+          attributes: {
+            httpOnly: true,
+            path: "/",
+            sameSite: production ? "none" : "lax",
+            secure: production,
+          },
+        },
+        state: {
           attributes: {
             httpOnly: true,
             path: "/",

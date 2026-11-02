@@ -231,11 +231,26 @@ app.get("/api/auth/google", async (req, res) => {
   }
   if (!auth) return res.status(500).json({ message: "Authentication is not configured on the server." });
   try {
+    // NOTE: auth.api.signInSocial on its own does NOT write its Set-Cookie
+    // headers to the Express response — without returnHeaders the OAuth
+    // state cookie is never sent to the browser, so Google's callback always
+    // fails with "State mismatch: State not persisted correctly" (seen live
+    // 2 Nov 2026 when this URL was opened directly). Ask for the headers and
+    // forward every Set-Cookie before redirecting to Google.
     const result = await auth.api.signInSocial({
       body: { provider: "google", callbackURL: CLIENT_URL },
       headers: headersFromReq(req, CLIENT_URL),
+      returnHeaders: true,
     });
-    if (result && result.url) return res.redirect(result.url);
+    const url = result && (result.response ? result.response.url : result.url);
+    if (result && result.headers) {
+      const setCookies =
+        typeof result.headers.getSetCookie === "function"
+          ? result.headers.getSetCookie()
+          : [result.headers.get("set-cookie")].filter(Boolean);
+      for (const cookie of setCookies) res.append("Set-Cookie", cookie);
+    }
+    if (url) return res.redirect(url);
     return res.status(500).json({ message: "Google login failed. Please try again." });
   } catch (err) {
     console.error("google login error:", err);
