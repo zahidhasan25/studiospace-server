@@ -4,6 +4,7 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const { connect, collection, isUsingMongo } = require("./db");
 const { SEED_STUDIOS, seedDemoUser } = require("./seed");
 
@@ -191,6 +192,15 @@ app.get("/api/auth/google", (req, res) => {
   }
   const serverUrl = (process.env.SERVER_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
   const redirectUri = `${serverUrl}/api/auth/google/callback`;
+  // PKCE: Google's secure-response policy expects a code challenge for new
+  // clients. Generate a verifier, keep it in a short-lived cookie on the
+  // server domain, and send only its S256 challenge to Google.
+  const codeVerifier = crypto.randomBytes(32).toString("base64url");
+  const codeChallenge = crypto.createHash("sha256").update(codeVerifier).digest("base64url");
+  res.cookie("studiospace_oauth_verifier", codeVerifier, {
+    ...cookieOptions(),
+    maxAge: 10 * 60 * 1000,
+  });
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -199,6 +209,8 @@ app.get("/api/auth/google", (req, res) => {
     access_type: "offline",
     prompt: "consent",
     state: "studiospace",
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
   });
   return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
 });
@@ -217,16 +229,20 @@ app.get("/api/auth/google/callback", async (req, res) => {
   try {
     const serverUrl = (process.env.SERVER_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
     const redirectUri = `${serverUrl}/api/auth/google/callback`;
+    const codeVerifier = req.cookies && req.cookies["studiospace_oauth_verifier"];
+    res.clearCookie("studiospace_oauth_verifier", { ...cookieOptions(), maxAge: 0 });
+    const tokenParams = new URLSearchParams({
+      code: String(code),
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: "authorization_code",
+    });
+    if (codeVerifier) tokenParams.set("code_verifier", String(codeVerifier));
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        code: String(code),
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri,
-        grant_type: "authorization_code",
-      }),
+      body: tokenParams,
     });
     const tokenData = await tokenRes.json();
     if (!tokenRes.ok || !tokenData.access_token) {
